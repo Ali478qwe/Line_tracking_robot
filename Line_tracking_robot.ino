@@ -29,7 +29,30 @@ typedef struct {
 static Motor_speed obj; 
 
 
-void speed_control(long ADC_Left , long  ADC_Right ){
+void speed_control(int ADC_Left , int  ADC_Right ){
+   static int left_buf [5];
+   static int right_buf [5];
+   int total_left  = 0;
+   int total_right = 0;
+   bool flag_rihgt = false;
+   bool flag_left =  false;
+   static int idx = 0;
+
+    left_buf[idx]  = ADC_Left;
+    right_buf[idx] = ADC_Right;
+    idx++;
+    if(idx >= 5) idx = 0;
+
+    for(int i = 0 ; i < 5 ; i++)
+    {
+      total_left  += left_buf  [i];
+      total_right += right_buf [i];
+    }
+
+    int avg_left  = total_left / 5 ;
+    int avg_right = total_right / 5 ; 
+
+
      int left_ratio = 1 , right_ratio = 1;
     // int white_color = min(ADC_Left , ADC_Right);
     // int black_color = max(ADC_Left , ADC_Right);
@@ -39,7 +62,7 @@ void speed_control(long ADC_Left , long  ADC_Right ){
     // obj.right_speed = right_speed;
     int error = ADC_Left - ADC_Right ;
     integral += error ;
-    int derivative = error - last_time ;
+    int derivative = error - last_error ;
     last_error = error;
     int output = (kp * error) + (ki * integral) + (kd * derivative);
 
@@ -51,10 +74,11 @@ void speed_control(long ADC_Left , long  ADC_Right ){
 
     // constrain(   left_motor    , obj.min_speed , obj.max_speed )
     // constrain(right_motor, obj.min_speed , obj.max_speed )
-    if(error < 1){   left_ratio = 1.5 ;   right_ratio = 0.5;}
-    if(error > 1){   left_ratio = 0.5 ;   right_ratio = 1.5;}
-    obj.left_speed  = left_speed * left_ratio ; 
-    obj.right_speed = right_speed * right_ratio; 
+    if(error < 1 && avg_right > avg_left){ right_ratio = 1.5 ; left_ratio = 0;}
+    if(error > 1 && avg_left > avg_right){ right_ratio = 0 ; left_ratio = 1.5;  }
+
+    obj.left_speed  = (left_speed * left_ratio)  + ((right_ratio == 0)? 20 : 0) ;
+    obj.right_speed = (right_speed * right_ratio) + ((left_ratio == 0)? 20 : 0) ;
 
 }
 
@@ -96,9 +120,9 @@ void setup()
 
 {
   Serial.begin(9600);
-  obj.min_speed = 80; 
-  obj.max_speed = 90;
-  obj.avrage_speed = 83;
+  obj.min_speed = 65;//80 
+  obj.max_speed = 100;//90
+  obj.avrage_speed = 70;//83
 
 
   pinMode(Left_IR,  INPUT);
@@ -123,39 +147,42 @@ void loop(){
     
    int now = millis();
 
-  int Dig_IR_Left = digitalRead(Left_IR);
+  int Dig_IR_Left  = digitalRead(Left_IR);
 
   int Dig_IR_Right = digitalRead(Right_IR);
 
-   long ADC_Left = analogRead(Left_IR_ADC);
+  int ADC_Left  = analogRead(Left_IR_ADC);
 
-   long ADC_Right = analogRead(Right_IR_ADC);
+  int ADC_Right = analogRead(Right_IR_ADC);
 
-   speed_control(ADC_Left, ADC_Right);
+  speed_control(ADC_Left, ADC_Right);
    
+//   analogWrite(ENB_Left,obj.left_speed);//
+
+//   analogWrite(ENB_Right,obj.right_speed);//
   
    
 
-    // if(flag){
-    // if(now - last_time >= 2000){
-    //     subflag = true;
-    // Serial.print("analog left : ");
-    // Serial.println(ADC_Left);
-    // Serial.print("analog right : ");
-    // Serial.println(ADC_Right);
-    // Serial.print("digital left : ");
-    // Serial.println(Dig_IR_Left);
-    // Serial.print("digital right : ");
-    // Serial.println(Dig_IR_Right);
-    //  Serial.print("left speed: ");
-    // Serial.println(obj.left_speed);
-    // Serial.print("right speed: ");
-    // Serial.println(obj.right_speed);
-    //  last_time = now;
-    // }
-    // flag = false;
+    if(flag){
+    if(now - last_time >= 2000){
+        subflag = true;
+    Serial.print("analog left : ");
+    Serial.println(ADC_Left);
+    Serial.print("analog right : ");
+    Serial.println(ADC_Right);
+    Serial.print("digital left : ");
+    Serial.println(Dig_IR_Left);
+    Serial.print("digital right : ");
+    Serial.println(Dig_IR_Right);
+     Serial.print("left speed: ");
+    Serial.println(obj.left_speed);
+    Serial.print("right speed: ");
+    Serial.println(obj.right_speed);
+     last_time = now;
+    }
+    flag = false;
    
-    // }
+    }
     
 
 
@@ -168,13 +195,7 @@ void loop(){
 
     }
     
-    if (Dig_IR_Left == 1 && Dig_IR_Right == 1) 
-    {
-
-    flag = true;
-    Stop();//CONDITION-2 STOP
-
-    }
+  
 
     if(Dig_IR_Left == 0 && Dig_IR_Right == 1) 
     {
@@ -191,14 +212,27 @@ void loop(){
 
     }
 
-   
+    //  if (Dig_IR_Left == 1 && Dig_IR_Right == 1) 
+    // {
+
+    // flag = true;
+    // Stop();//CONDITION-2 STOP
+
+    // }
 
 }
 
 void MoveForward()
 
 {
-     if(subflag) {Serial.println(__func__);subflag = false;}
+    if(subflag) {Serial.println(__func__);subflag = false;}
+
+    // for( uint8_t i = obj.min_speed ; i <= obj.avrage_speed ; i++){
+    //     // obj.avrage_speed = (int)i ; 
+    //     Serial.println((int)i);
+
+    //  }
+
     digitalWrite(IN1,LOW);
 
     digitalWrite(IN2,HIGH);
@@ -206,20 +240,11 @@ void MoveForward()
     digitalWrite(IN3,LOW);
 
     digitalWrite(IN4,HIGH);
+ 
 
-    for( auto i = obj.avrage_speed ; i <= obj.min_speed ; i--){
-        // obj.avrage_speed = (int)i ; 
-        Serial.println((int)i);
-       
+    analogWrite(ENB_Left,obj.left_speed);//
 
-   
-    analogWrite(ENB_Left,i);//
-
-    analogWrite(ENB_Right,i);//150
-     }
-
-    
-
+    analogWrite(ENB_Right,obj.right_speed);//150
 }
 
 void TurnRight()
@@ -237,7 +262,7 @@ void TurnRight()
 
     analogWrite(ENB_Left,obj.left_speed);//
 
-    analogWrite(ENB_Right,obj.max_speed);//
+    analogWrite(ENB_Right,obj.right_speed);//
 
 
 
@@ -255,10 +280,9 @@ void TurnLeft()
 
     digitalWrite(IN4,HIGH);
 
+   analogWrite(ENB_Left,obj.left_speed);//
 
-    analogWrite(ENB_Left,obj.max_speed);
-
-    analogWrite(ENB_Right,obj.right_speed);
+   analogWrite(ENB_Right,obj.right_speed);//
 
     
 
