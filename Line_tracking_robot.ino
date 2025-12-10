@@ -8,12 +8,13 @@
 
 static int last_time  = 0;
 
-float kp = 2 ; 
-float ki = 0 ;
-float kd = 1 ;
+float kp = 0.097 ; // har che kamtr deqat bishtar
+// float ki = 10;
+float kd = 0.05 ;
 
 static int last_error = 0 ; 
 static float integral = 0 ;
+static float output = 0; 
 
 
 
@@ -22,7 +23,7 @@ typedef struct {
     int left_speed;
     int right_speed;
     long min_speed;
-    int avrage_speed;
+    int normal_speed;
     long max_speed;
     } Motor_speed;
 
@@ -43,7 +44,7 @@ void speed_control(int ADC_Left , int  ADC_Right ){
     idx++;
     if(idx >= 5) idx = 0;
 
-    for(int i = 0 ; i < 5 ; i++)
+    for(int i = 0 ; i < 5 ; i++) // --->>>> errr dare benazram
     {
       total_left  += left_buf  [i];
       total_right += right_buf [i];
@@ -54,42 +55,34 @@ void speed_control(int ADC_Left , int  ADC_Right ){
 
 
      int left_ratio = 1 , right_ratio = 1;
-    // int white_color = min(ADC_Left , ADC_Right);
-    // int black_color = max(ADC_Left , ADC_Right);
-    // int left_speed = map(ADC_Left,1023,0,obj.min_speed,obj.max_speed);
-    // int right_speed = map(ADC_Right,1023,0,obj.min_speed,obj.max_speed);
-    // obj.left_speed = left_speed; 
-    // obj.right_speed = right_speed;
-    int error = ADC_Left - ADC_Right ;
-    integral += error ;
-    int derivative = error - last_error ;
-    last_error = error;
-    int output = (kp * error) + (ki * integral) + (kd * derivative);
 
-    int  left_motor  = obj.avrage_speed - output ; 
-    int  right_motor = obj.avrage_speed + output ; 
+    int error = avg_left - avg_right ; // -1023 to +1023 -> mizan enheraf az line 
+    int derivative = error - last_error ; // -2046 to +2046 -> tanzim sorat va pishbin jahat
+    last_error = error; 
+    
+    
+    // Serial.println(error);
+    // integral += error ;  // niazz nist (ki * integral) // baray jelo gir az enheraf va khatay gozashteh majmo kol khataha
 
-    int left_speed = map(left_motor,-65025,65025,obj.min_speed,obj.max_speed);
-    int right_speed = map(right_motor,-65025,65025,obj.min_speed,obj.max_speed);
+    output = ((kp * error) +  (kd * derivative));
+    output  = constrain((int)output,0,obj.max_speed);
+    
+    int  left_motor  = obj.normal_speed - output ; 
+    int  right_motor = obj.normal_speed + output ; 
 
-    // constrain(   left_motor    , obj.min_speed , obj.max_speed )
-    // constrain(right_motor, obj.min_speed , obj.max_speed )
-    if(error < 1 && avg_right > avg_left){ right_ratio = 1.5 ; left_ratio = 0;}
-    if(error > 1 && avg_left > avg_right){ right_ratio = 0 ; left_ratio = 1.5;  }
+    int left_speed  = constrain(   left_motor    , 0, 255 );
+ 
+    int right_speed = constrain(right_motor, 0 , 255 );
 
-    obj.left_speed  = (left_speed * left_ratio)  + ((right_ratio == 0)? 20 : 0) ;
-    obj.right_speed = (right_speed * right_ratio) + ((left_ratio == 0)? 20 : 0) ;
+
+    // if(error < 1 && avg_right > avg_left){ right_ratio = 1.5 ; left_ratio = 0;}
+    // if(error > 1 && avg_left > avg_right){ right_ratio = 0 ; left_ratio = 1.5;  }
+
+    obj.left_speed  = (left_speed * left_ratio) ;// + ((right_ratio == 0)? 20 : 0) ;
+    obj.right_speed = (right_speed * right_ratio); // + ((left_ratio == 0)? 20 : 0) ;
 
 }
 
-void findmotion_speed(){
-    for(uint8_t i = 0 ; i <= 255 ; i++){
-        obj.avrage_speed = (int)i ; 
-        Serial.println((int)i);
-        delay(50);
-
-    }
-}
 
 /*----IR Sensors Connection----*/
 
@@ -111,7 +104,24 @@ uint8_t IN4 = 11;
 uint8_t ENB_Left = 5;  
 uint8_t ENB_Right = 6;
 
+void findmotion_speed(){
+    digitalWrite(IN1,LOW);
 
+    digitalWrite(IN2,HIGH);
+
+    digitalWrite(IN3,LOW);
+
+    digitalWrite(IN4,HIGH);
+    for(uint8_t i = 0 ; i <= 255 ; i++){
+       
+    analogWrite(ENB_Left,i);//
+
+    analogWrite(ENB_Right,i);//150
+    Serial.println((int)i);
+        delay(50);
+
+    }
+}
 
 
 // static int Speed = 70; //MAX speed is 255
@@ -122,7 +132,7 @@ void setup()
   Serial.begin(9600);
   obj.min_speed = 65;//80 
   obj.max_speed = 100;//90
-  obj.avrage_speed = 70;//83
+  obj.normal_speed = 65;//83
 
 
   pinMode(Left_IR,  INPUT);
@@ -155,6 +165,8 @@ void loop(){
 
   int ADC_Right = analogRead(Right_IR_ADC);
 
+//   findmotion_speed();
+
   speed_control(ADC_Left, ADC_Right);
    
 //   analogWrite(ENB_Left,obj.left_speed);//
@@ -178,6 +190,7 @@ void loop(){
     Serial.println(obj.left_speed);
     Serial.print("right speed: ");
     Serial.println(obj.right_speed);
+    Serial.println(output);
      last_time = now;
     }
     flag = false;
